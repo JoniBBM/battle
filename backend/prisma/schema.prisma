@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GameStatus {
+  setup
+  running
+  paused
+  finished
+}
+
+enum OccupationAction {
+  enter
+  leave
+}
+
+model Game {
+  id                 String     @id @default(uuid())
+  name               String
+  status             GameStatus @default(setup)
+  createdAt          DateTime   @default(now()) @map("created_at")
+  startedAt          DateTime?  @map("started_at")
+  endedAt            DateTime?  @map("ended_at")
+  pausedAt           DateTime?  @map("paused_at") // Zeitpunkt des Pausierens
+  totalPausedSeconds Int        @default(0) @map("total_paused_seconds") // Nur für Timer-Berechnung
+
+  teams        Team[]
+  zones        Zone[]
+  bandCaptures BandCapture[]
+  settings     GameSettings?
+  bandStation  BandStation?
+
+  @@map("games")
+}
+
+model Team {
+  id         String @id @default(uuid())
+  gameId     String @map("game_id")
+  name       String
+  color      String // hex code like #FF0000
+  orderIndex Int    @map("order_index")
+  zonePoints Float  @default(0) @map("zone_points") // Direct storage of zone points
+  bandPoints Int    @default(0) @map("band_points") // Direct storage of band points
+
+  game             Game                   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  occupationEvents ZoneOccupationEvent[]
+  capturedBands    BandCapture[]          @relation("CapturedTeam")
+  capturingBands   BandCapture[]          @relation("CapturingTeam")
+  zoneOccupations  ZoneOccupation[]       // Current zones this team is in
+
+  @@map("teams")
+}
+
+model Zone {
+  id         String @id @default(uuid())
+  gameId     String @map("game_id")
+  name       String
+  pin        String // 4-6 digits
+  orderIndex Int    @map("order_index")
+
+  game                Game                   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  occupationEvents    ZoneOccupationEvent[]
+  currentOccupations  ZoneOccupation[]       // Teams currently in this zone
+
+  @@map("zones")
+}
+
+model ZoneOccupationEvent {
+  id        String           @id @default(uuid())
+  zoneId    String           @map("zone_id")
+  teamId    String           @map("team_id")
+  action    OccupationAction
+  timestamp DateTime         @default(now())
+  createdBy String           @map("created_by") // Mitarbeiter name/id
+
+  zone Zone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@map("zone_occupation_events")
+  @@index([zoneId, timestamp])
+  @@index([teamId, timestamp])
+}
+
+model BandCapture {
+  id               String   @id @default(uuid())
+  gameId           String   @map("game_id")
+  capturingTeamId  String   @map("capturing_team_id")
+  capturedTeamId   String   @map("captured_team_id")
+  points           Int      @default(10)
+  timestamp        DateTime @default(now())
+  stationName      String   @map("station_name")
+
+  game          Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  capturingTeam Team @relation("CapturingTeam", fields: [capturingTeamId], references: [id], onDelete: Cascade)
+  capturedTeam  Team @relation("CapturedTeam", fields: [capturedTeamId], references: [id], onDelete: Cascade)
+
+  @@map("band_captures")
+  @@index([gameId, timestamp])
+}
+
+model GameSettings {
+  id                  String  @id @default(uuid())
+  gameId              String  @unique @map("game_id")
+  pointsPerSecond     Float   @default(1.0) @map("points_per_second")
+  bandCapturePoints   Int     @default(10) @map("band_capture_points")
+  durationMinutes     Int?    @map("duration_minutes") // Spieldauer in Minuten (optional)
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@map("game_settings")
+}
+
+model BandStation {
+  id     String @id @default(uuid())
+  gameId String @unique @map("game_id")
+  name   String
+  pin    String // 4-6 digits
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@map("band_stations")
+}
+
+model ZoneOccupation {
+  id        String   @id @default(uuid())
+  zoneId    String   @map("zone_id")
+  teamId    String   @map("team_id")
+  enteredAt DateTime @default(now()) @map("entered_at")
+
+  zone Zone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([zoneId, teamId]) // A team can only be in a zone once
+  @@map("zone_occupations")
+  @@index([teamId])
+  @@index([zoneId])
+}
