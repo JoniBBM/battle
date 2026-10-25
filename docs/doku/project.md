@@ -1,6 +1,6 @@
 ---
-id: jonibbm-battle
-name: Jonibbm Battle
+id: battle
+name: battle
 summary: TODO Ein Satz, was diese App macht.
 tech: []
 # repo: https://github.com/org/repo
